@@ -1,0 +1,7 @@
+0000000000000000000000000000000000000000 ab85b023d95b909e8c372dd93fead739769a2c6b vandat <levandat100603@gmail.com> 1763299985 +0700	commit (initial): Initial commit
+ab85b023d95b909e8c372dd93fead739769a2c6b 3d2030f11b155193337ee060b119b335a9117267 webquanlyphongtro <levandat100603@gmail.com> 1776094452 +0700	commit: Fix forgot-password UI and implement auto-login for remember-me
+3d2030f11b155193337ee060b119b335a9117267 6d2f6896b409170d77f64985a6a4008b3885082f webquanlyphongtro <levandat100603@gmail.com> 1776094775 +0700	commit: Fix syntax error: remove duplicate code outside component
+6d2f6896b409170d77f64985a6a4008b3885082f 0a92823d2f8722cc2537290f1adbea57f507afe1 webquanlyphongtro <levandat100603@gmail.com> 1776095400 +0700	commit: Remove header from forgot-password screen and cleanup unused styles
+0a92823d2f8722cc2537290f1adbea57f507afe1 54453cc5b1adfbf86b376fa071d9d6aace74d26e webquanlyphongtro <levandat100603@gmail.com> 1776095932 +0700	commit: Hide top header on forgot-password and restore page title section
+54453cc5b1adfbf86b376fa071d9d6aace74d26e 345b04c72ff0acbf3d9c73d70b9d71f69fa8f8d9 webquanlyphongtro <levandat100603@gmail.com> 1776096396 +0700	commit: Use local API in dev and refine forgot-password header behavior
+345b04c72ff0acbf3d9c73d70b9d71f69fa8f8d9 b62b34a8f0ae23787e749e1c0aab566bbbc6dc90 webquanlyphongtro <levandat100603@gmail.com> 1776097059 +0700	commit: Add in-app reset password step and improve auth messages
