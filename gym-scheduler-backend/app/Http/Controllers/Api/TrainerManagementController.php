@@ -13,9 +13,29 @@ use App\Http\Requests\RequestWithdrawalRequest;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class TrainerManagementController
 {
+    private function findTrainerForUser($user)
+    {
+        if (!$user || $user->role !== 'trainer') {
+            return null;
+        }
+
+        $trainer = null;
+
+        if (!empty($user->email)) {
+            $trainer = DB::table('trainers')->where('email', $user->email)->first();
+        }
+
+        if (!$trainer && !empty($user->name)) {
+            $trainer = DB::table('trainers')->where('name', $user->name)->first();
+        }
+
+        return $trainer;
+    }
+
     private function resolveTrainerId(): ?int
     {
         $user = Auth::user();
@@ -299,6 +319,9 @@ class TrainerManagementController
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
+        $trainer = $this->findTrainerForUser(Auth::user());
+        $trainerRecordId = $trainer?->id;
+
         $earnings = TrainerEarning::where('trainer_id', $authTrainerId)->firstOrCreate(
             ['trainer_id' => $authTrainerId],
             [
@@ -315,6 +338,16 @@ class TrainerManagementController
             $earnings->commission_rate = 60;
             $earnings->save();
         }
+
+        $cancelledSessions = 0;
+        if ($trainerRecordId) {
+            $cancelledSessions = DB::table('booking_trainers')
+                ->where('trainer_id', $trainerRecordId)
+                ->where('status', 'rejected')
+                ->count();
+        }
+
+        $earnings->cancelled_sessions = $cancelledSessions;
 
         return response()->json($earnings);
     }
