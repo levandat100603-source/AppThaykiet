@@ -5,8 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
 
@@ -129,7 +129,7 @@ class AdminController extends Controller
                 't.spec',
             ])
             ->join('users as trainer_user', 'wh.trainer_id', '=', 'trainer_user.id')
-            ->leftJoin('trainers as t', 'trainer_user.id', '=', 't.user_id')
+            ->leftJoin('trainers as t', 'trainer_user.email', '=', 't.email')
             ->orderBy('wh.day_of_week', 'asc')
             ->orderBy('wh.start_time', 'asc');
         
@@ -146,13 +146,48 @@ class AdminController extends Controller
                 ->get(['id', 'name', 'email', 'phone']);
         } catch (\Exception $e) {}
 
+        $fetchTable = function (string $table, string $orderBy = 'created_at') {
+            try {
+                return DB::table($table)->orderBy($orderBy, 'desc')->get();
+            } catch (\Exception $e) {
+                return collect();
+            }
+        };
+
+        $timeOffs = $fetchTable('time_offs');
+        $sessionNotes = $fetchTable('session_notes');
+        $workoutPlans = $fetchTable('workout_plans');
+        $waitlistEntries = $fetchTable('waitlist_entries');
+        $membershipFreezes = $fetchTable('membership_freezes');
+        $memberCards = $fetchTable('member_cards');
+        $bookingCancellations = $fetchTable('booking_cancellations');
+        $vouchers = $fetchTable('vouchers');
+        $pushCampaigns = $fetchTable('push_campaigns');
+        $refundRequests = $fetchTable('refund_requests');
+        $transactionReports = $fetchTable('transaction_reports');
+        $pendingRegistrations = $fetchTable('pending_registrations');
+        $trainerEarnings = $fetchTable('trainer_earnings');
+
         return response()->json([
             'classes' => $classes,
             'trainers' => $trainers,
             'packages' => $packages,
             'members' => $members,
             'trainer_schedules' => $trainerSchedules,
-            'available_users' => $availableUsers
+            'available_users' => $availableUsers,
+            'time_offs' => $timeOffs,
+            'session_notes' => $sessionNotes,
+            'workout_plans' => $workoutPlans,
+            'waitlist_entries' => $waitlistEntries,
+            'membership_freezes' => $membershipFreezes,
+            'member_cards' => $memberCards,
+            'booking_cancellations' => $bookingCancellations,
+            'vouchers' => $vouchers,
+            'push_campaigns' => $pushCampaigns,
+            'refund_requests' => $refundRequests,
+            'transaction_reports' => $transactionReports,
+            'pending_registrations' => $pendingRegistrations,
+            'trainer_earnings' => $trainerEarnings,
         ]);
     }
 

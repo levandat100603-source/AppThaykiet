@@ -130,7 +130,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/trainers', [AdminController::class, 'getTrainers']);
     Route::get('/packages', [AdminController::class, 'getPackages']);
 
-    Route::middleware(['role:admin', 'can:admin-access'])->group(function () {
+    Route::middleware(['auth:sanctum', 'role:admin', 'can:admin-access'])->group(function () {
         Route::post('/admin/sync-trainers', [AdminController::class, 'syncTrainersUsers']);
         Route::get('/admin/data', [AdminController::class, 'getData']);
         Route::post('/admin/store', [AdminController::class, 'store']);

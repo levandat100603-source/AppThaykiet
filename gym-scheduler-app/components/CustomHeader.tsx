@@ -184,7 +184,7 @@ export default function CustomHeader() {
       { id: 'admin-packages', title: 'Gói tập', icon: 'card-account-details', action: () => router.push({ pathname: '/admin/dashboard', params: { tab: 'packages' } } as any) },
       { id: 'admin-members', title: 'Thành viên', icon: 'account-group-outline', action: () => router.push({ pathname: '/admin/dashboard', params: { tab: 'members' } } as any) },
       { id: 'admin-bookings', title: 'Xác nhận lịch', icon: 'clipboard-check-outline', action: () => router.push({ pathname: '/admin/dashboard', params: { tab: 'bookings' } } as any) },
-      { id: 'admin-allinfo', title: 'Thông tin hệ thống', icon: 'chart-bar', action: () => router.push('/admin/allinfo' as any) },
+      { id: 'admin-allinfo', title: 'Dữ liệu mở rộng', icon: 'chart-bar', action: () => router.push('/admin/allinfo' as any) },
     ],
     [router]
   );
