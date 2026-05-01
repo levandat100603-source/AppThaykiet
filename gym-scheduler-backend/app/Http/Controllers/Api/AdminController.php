@@ -94,7 +94,13 @@ class AdminController extends Controller
         
         $members = [];
         try {
-            $members = DB::table('members')->orderBy('id', 'desc')->get()->map(function ($m) {
+            $members = DB::table('members')->orderBy('id', 'desc')->get()
+                ->unique(function ($m) {
+                    $email = trim((string) ($m->email ?? ''));
+                    return $email !== '' ? strtolower($email) : 'member-' . $m->id;
+                })
+                ->values()
+                ->map(function ($m) {
                 // Nếu chưa có duration, thử lấy từ gói tập (packages.duration)
                 $months = (int) filter_var($m->duration ?? '', FILTER_SANITIZE_NUMBER_INT);
                 if ($months === 0 && !empty($m->pack)) {

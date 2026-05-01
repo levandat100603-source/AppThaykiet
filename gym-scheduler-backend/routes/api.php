@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\ScheduleController;
 use App\Http\Controllers\Api\GymClassController;
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\OrderController;
+use App\Http\Controllers\Api\VNPayController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\HistoryController;
 use App\Http\Controllers\Api\MemberController;
@@ -115,6 +116,9 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::delete('/trainer/time-off/{id}', [TrainerManagementController::class, 'cancelTimeOff']);
             
             // Withdrawal Request Approvals
+            Route::get('/withdrawal-requests', [AdminManagementController::class, 'getWithdrawalRequests']);
+            Route::post('/withdrawal-requests/{id}/approve', [AdminManagementController::class, 'approveWithdrawal']);
+            Route::post('/withdrawal-requests/{id}/reject', [AdminManagementController::class, 'rejectWithdrawal']);
             Route::put('/trainer/withdrawal-requests/{id}', [AdminManagementController::class, 'approveWithdrawal']);
             Route::post('/trainer/withdrawal-requests/{id}/reject', [AdminManagementController::class, 'rejectWithdrawal']);
         
@@ -147,6 +151,12 @@ Route::middleware('auth:sanctum')->group(function () {
     
     
     Route::post('/checkout', [OrderController::class, 'checkout']);
+
+    // VNPay routes that require the current authenticated user
+    Route::prefix('/vnpay')->group(function () {
+        Route::post('/create-payment', [VNPayController::class, 'createPaymentUrl']);
+        Route::post('/check-status', [VNPayController::class, 'checkStatus']);
+    });
     
     
     Route::middleware('can:manage-trainer-bookings')->group(function () {
@@ -164,9 +174,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/dashboard-stats', [DashboardController::class, 'index']);
     Route::post('/dashboard-reset', [DashboardController::class, 'reset']);
     Route::get('/user/history', [HistoryController::class, 'index']);
+    Route::get('/user/orders', [HistoryController::class, 'getPaymentOrders']);
     Route::put('/user/profile', [AuthController::class, 'updateProfile']);
     Route::post('/user/avatar', [AuthController::class, 'updateAvatar']);
     Route::post('/user/change-password', [AuthController::class, 'changePassword']);
 
 
 });
+
+// VNPay gateway callback is public because VNPay redirects without auth headers.
+Route::get('/vnpay/callback', [VNPayController::class, 'handleCallback']);

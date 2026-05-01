@@ -6,6 +6,7 @@ import {
   StyleSheet,
   StatusBar,
   Alert,
+  Platform,
   RefreshControl,
   useWindowDimensions,
   Modal,
@@ -59,7 +60,7 @@ const STYLE_CONFIG: any = {
 
 export default function MembershipPage() {
   const router = useRouter();
-  const { addToCart } = useCart();
+  const { cart, addToCart, removeFromCart } = useCart();
   const { token, isInitializing } = useAuth();
   const { isDark } = useThemeMode();
   const colors = getThemeColors(isDark);
@@ -71,6 +72,7 @@ export default function MembershipPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [detailsModal, setDetailsModal] = useState<any>(null);
+  const [currentMembership, setCurrentMembership] = useState<{ package?: string; expiry?: string; is_active?: boolean } | null>(null);
 
   const formatCurrency = (val: number) => 
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val).replace('₫', 'đ');
@@ -123,24 +125,73 @@ export default function MembershipPage() {
     }
   }, [isInitializing, token]);
 
+  const fetchCurrentMembership = useCallback(async () => {
+    if (isInitializing) return;
+    if (!token) {
+      setCurrentMembership(null);
+      return;
+    }
+
+    try {
+      const res = await api.get('/user/history');
+      setCurrentMembership(res.data?.membership || null);
+    } catch (error) {
+      console.log('Lỗi tải thông tin gói hiện tại:', error);
+      setCurrentMembership(null);
+    }
+  }, [isInitializing, token]);
+
   useFocusEffect(
     useCallback(() => {
       fetchPackages();
-    }, [fetchPackages])
+      fetchCurrentMembership();
+    }, [fetchPackages, fetchCurrentMembership])
   );
 
   useEffect(() => {
     if (!isInitializing && token) {
       fetchPackages();
+      fetchCurrentMembership();
     }
-  }, [isInitializing, token, fetchPackages]);
+  }, [isInitializing, token, fetchPackages, fetchCurrentMembership]);
 
   const onRefresh = () => {
     setRefreshing(true);
     fetchPackages();
   };
 
-  const handleAddToCart = (item: any) => {
+  const confirmPackageChange = useCallback((currentPack: string, nextPack: string) => {
+    const message = `Thành viên đang có gói "${currentPack}". Bạn có muốn xác nhận đổi sang gói "${nextPack}" không?`;
+
+    if (Platform.OS === 'web') {
+      return Promise.resolve(window.confirm(message));
+    }
+
+    return new Promise<boolean>((resolve) => {
+      Alert.alert(
+        'Xác nhận đổi gói',
+        message,
+        [
+          { text: 'Hủy', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Xác nhận', style: 'default', onPress: () => resolve(true) },
+        ]
+      );
+    });
+  }, []);
+
+  const handleAddToCart = async (item: any) => {
+    const activePack = currentMembership?.package;
+    const hasExistingPack = Boolean(activePack) && activePack !== 'Chưa đăng ký';
+
+    if (hasExistingPack && activePack !== item.name) {
+      const confirmed = await confirmPackageChange(activePack as string, item.name);
+      if (!confirmed) return;
+    }
+
+    cart
+      .filter((cartItem) => cartItem.type === 'membership')
+      .forEach((cartItem) => removeFromCart(cartItem.id, cartItem.type, cartItem.memberId));
+
     addToCart({
       id: item.id,
       name: item.name,

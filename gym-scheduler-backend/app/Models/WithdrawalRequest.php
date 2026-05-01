@@ -16,11 +16,13 @@ class WithdrawalRequest extends Model
         'notes',
         'approved_by',
         'approved_at',
+        'confirmation_images',
     ];
 
     protected $casts = [
         'amount' => 'decimal:2',
         'bank_details' => 'array',
+        'confirmation_images' => 'array',
         'approved_at' => 'datetime',
     ];
 

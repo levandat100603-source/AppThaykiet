@@ -118,6 +118,13 @@ export default function BookingHistoryScreen() {
             <Text style={[styles.backText, { color: colors.text }]}>Quay lại hồ sơ</Text>
           </Pressable>
           <Text style={[styles.pageTitle, { color: colors.text }]}>Lịch đã đặt của bạn</Text>
+          <Pressable
+            style={[styles.paymentBtn, { backgroundColor: colors.primary }]}
+            onPress={() => router.push('/profile/payments')}
+          >
+            <MaterialCommunityIcons name="receipt-text-outline" size={18} color="#fff" />
+            <Text style={styles.paymentBtnText}>Xem lịch sử thanh toán</Text>
+          </Pressable>
         </View>
 
         <View style={[styles.sectionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}> 
@@ -231,6 +238,22 @@ const styles = StyleSheet.create({
   },
   backText: { fontWeight: '700', fontSize: 13, fontFamily: UI.font.body },
   pageTitle: { fontSize: 24, fontWeight: '800', fontFamily: UI.font.heading },
+  paymentBtn: {
+    marginTop: 12,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  paymentBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '800',
+    fontFamily: UI.font.body,
+  },
 
   sectionCard: {
     borderRadius: 16,

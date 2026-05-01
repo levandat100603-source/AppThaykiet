@@ -12,6 +12,8 @@ use App\Models\Booking;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Carbon\Carbon;
 
 class AdminManagementController
@@ -461,24 +463,99 @@ class AdminManagementController
     }
 
     /**
+     * Get withdrawal requests for admin payroll screen
+     */
+    public function getWithdrawalRequests(Request $request): JsonResponse
+    {
+        $query = WithdrawalRequest::with(['trainer', 'approvedBy']);
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        $requests = $query->orderBy('created_at', 'desc')->get()->map(function ($requestItem) {
+            return [
+                'id' => $requestItem->id,
+                'trainer_id' => $requestItem->trainer_id,
+                'trainer_name' => $requestItem->trainer?->name,
+                'trainer_email' => $requestItem->trainer?->email,
+                'trainer_phone' => $requestItem->trainer?->phone,
+                'amount' => $requestItem->amount,
+                'method' => $requestItem->method,
+                'bank_details' => $requestItem->bank_details,
+                'status' => $requestItem->status,
+                'notes' => $requestItem->notes,
+                'approved_by' => $requestItem->approved_by,
+                'approved_by_name' => $requestItem->approvedBy?->name,
+                'approved_at' => $requestItem->approved_at,
+                'confirmation_images' => $requestItem->confirmation_images ?? [],
+                'created_at' => $requestItem->created_at,
+                'updated_at' => $requestItem->updated_at,
+            ];
+        });
+
+        return response()->json($requests);
+    }
+
+    /**
      * Approve withdrawal request
      */
     public function approveWithdrawal($id, Request $request): JsonResponse
     {
         $withdrawal = WithdrawalRequest::findOrFail($id);
-        
+
         $validated = $request->validate([
             'notes' => 'nullable|string',
+            'confirmation_images' => 'nullable|array|max:3',
+            'confirmation_images.*' => 'image|mimes:jpg,jpeg,png,webp|max:5120',
         ]);
 
-        $withdrawal->update([
-            'status' => 'approved',
-            'approved_by' => auth()->id(),
-            'approved_at' => now(),
-            'notes' => $validated['notes'] ?? null,
-        ]);
+        if ($withdrawal->status !== 'pending') {
+            return response()->json(['message' => 'Yêu cầu này đã được xử lý trước đó'], 422);
+        }
 
-        return response()->json($withdrawal);
+        DB::beginTransaction();
+
+        try {
+            $storedImages = [];
+            if ($request->hasFile('confirmation_images')) {
+                foreach ((array) $request->file('confirmation_images') as $imageFile) {
+                    if (!$imageFile) {
+                        continue;
+                    }
+
+                    $storedPath = $imageFile->store('withdrawal-confirmations', 'public');
+                    $storedImages[] = '/storage/' . $storedPath;
+                }
+            }
+
+            $withdrawal->update([
+                'status' => 'approved',
+                'approved_by' => auth()->id(),
+                'approved_at' => now(),
+                'notes' => $validated['notes'] ?? null,
+                'confirmation_images' => $storedImages,
+            ]);
+
+            DB::table('notifications')->insert([
+                'user_id' => $withdrawal->trainer_id,
+                'title' => 'Yêu cầu rút tiền đã được duyệt',
+                'message' => 'Yêu cầu rút ' . number_format($withdrawal->amount, 0, ',', '.') . 'đ của bạn đã được admin xác nhận.',
+                'type' => 'success',
+                'related_type' => 'withdrawal',
+                'related_id' => $withdrawal->id,
+                'is_read' => 0,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            DB::commit();
+
+            return response()->json($withdrawal->fresh(['trainer', 'approvedBy']));
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json(['message' => 'Không thể duyệt yêu cầu: ' . $e->getMessage()], 500);
+        }
     }
 
     /**
@@ -492,21 +569,54 @@ class AdminManagementController
             'notes' => 'required|string',
         ]);
 
-        // Refund the amount back to trainer's withdrawal balance
-        $earning = TrainerEarning::where('trainer_id', $withdrawal->trainer_id)->first();
-        if ($earning) {
+        if ($withdrawal->status !== 'pending') {
+            return response()->json(['message' => 'Yêu cầu này đã được xử lý trước đó'], 422);
+        }
+
+        DB::beginTransaction();
+
+        try {
+            $earning = TrainerEarning::firstOrCreate(
+                ['trainer_id' => $withdrawal->trainer_id],
+                [
+                    'total_earnings' => 0,
+                    'completed_sessions' => 0,
+                    'pending_sessions' => 0,
+                    'cancelled_sessions' => 0,
+                    'withdrawal_balance' => 0,
+                    'commission_rate' => 60,
+                ]
+            );
+
             $earning->update([
                 'withdrawal_balance' => $earning->withdrawal_balance + $withdrawal->amount,
             ]);
+
+            $withdrawal->update([
+                'status' => 'rejected',
+                'approved_by' => auth()->id(),
+                'approved_at' => now(),
+                'notes' => $validated['notes'],
+            ]);
+
+            DB::table('notifications')->insert([
+                'user_id' => $withdrawal->trainer_id,
+                'title' => 'Yêu cầu rút tiền bị từ chối',
+                'message' => 'Yêu cầu rút ' . number_format($withdrawal->amount, 0, ',', '.') . 'đ của bạn đã bị từ chối. Số tiền đã được hoàn lại vào số dư.',
+                'type' => 'warning',
+                'related_type' => 'withdrawal',
+                'related_id' => $withdrawal->id,
+                'is_read' => 0,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            DB::commit();
+
+            return response()->json($withdrawal->fresh(['trainer', 'approvedBy']));
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json(['message' => 'Không thể từ chối yêu cầu: ' . $e->getMessage()], 500);
         }
-
-        $withdrawal->update([
-            'status' => 'rejected',
-            'approved_by' => auth()->id(),
-            'approved_at' => now(),
-            'notes' => $validated['notes'],
-        ]);
-
-        return response()->json($withdrawal);
     }
 }

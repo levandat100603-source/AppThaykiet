@@ -18,7 +18,7 @@ export default function AdminReportsScreen() {
     transactions,
     revenueStats,
     loading,
-    fetchRefundRequests,
+    fetchRefunds,
     fetchTransactionReports,
     fetchRevenueStats,
     approveRefund,
@@ -39,10 +39,10 @@ export default function AdminReportsScreen() {
   const [dateToFilter, setDateToFilter] = useState<string>('');
 
   useEffect(() => {
-    fetchRefundRequests();
+    fetchRefunds();
     fetchTransactionReports();
     fetchRevenueStats();
-  }, []);
+  }, [fetchRefunds, fetchTransactionReports, fetchRevenueStats]);
 
   const handleApproveRefund = async () => {
     if (!selectedRefund || !approveAmount) {
@@ -84,8 +84,8 @@ export default function AdminReportsScreen() {
   const handleExportReport = async () => {
     try {
       await exportTransactionReports({
-        from_date: dateFromFilter,
-        to_date: dateToFilter,
+        fromDate: dateFromFilter,
+        toDate: dateToFilter,
       });
       Alert.alert('Thành công', 'Báo cáo đã được xuất');
     } catch (err: any) {
@@ -235,18 +235,12 @@ export default function AdminReportsScreen() {
             </View>
             <View style={styles.statCard}>
               <Text style={styles.statLabel}>Số giao dịch</Text>
-              <Text style={styles.statValue}>{revenueStats.transaction_count || 0}</Text>
+              <Text style={styles.statValue}>{revenueStats.total_transactions || 0}</Text>
             </View>
             <View style={styles.statCard}>
               <Text style={styles.statLabel}>Doanh thu trung bình</Text>
               <Text style={styles.statValue}>
-                ${revenueStats.average_transaction?.toFixed(2) || '0.00'}
-              </Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statLabel}>Doanh thu cao nhất</Text>
-              <Text style={styles.statValue}>
-                ${revenueStats.max_transaction?.toFixed(2) || '0.00'}
+                ${revenueStats.avg_order_value?.toFixed(2) || '0.00'}
               </Text>
             </View>
           </View>
@@ -256,41 +250,21 @@ export default function AdminReportsScreen() {
             <View style={styles.metricRow}>
               <Text style={styles.metricLabel}>Thành viên hoạt động</Text>
               <Text style={styles.metricValue}>
-                {revenueStats.active_members || 0}
-              </Text>
-            </View>
-            <View style={styles.metricRow}>
-              <Text style={styles.metricLabel}>Trainer hoạt động</Text>
-              <Text style={styles.metricValue}>
-                {revenueStats.active_trainers || 0}
-              </Text>
-            </View>
-            <View style={styles.metricRow}>
-              <Text style={styles.metricLabel}>Lịch hoàn thành</Text>
-              <Text style={styles.metricValue}>
-                {revenueStats.completed_sessions || 0}
+                {0}
               </Text>
             </View>
             <View style={styles.metricRow}>
               <Text style={styles.metricLabel}>Tỷ lệ giữ chân</Text>
               <Text style={styles.metricValue}>
-                {revenueStats.retention_rate?.toFixed(1) || '0'}%
+                0%
               </Text>
             </View>
           </View>
 
           <View style={styles.trendCard}>
-            <Text style={styles.trendTitle}>Xu hướng tuần này</Text>
-            <View style={styles.trendBar}>
-              <View
-                style={[
-                  styles.trendIndicator,
-                  { width: `${Math.min((revenueStats.week_trend || 0), 100)}%` },
-                ]}
-              />
-            </View>
+            <Text style={styles.trendTitle}>Tổng quan giao dịch</Text>
             <Text style={styles.trendText}>
-              {revenueStats.week_trend && revenueStats.week_trend > 0 ? '📈' : '📉'} {revenueStats.week_trend?.toFixed(1) || 0}% so với tuần trước
+              Dữ liệu hiện có chỉ bao gồm doanh thu, số giao dịch và giá trị đơn trung bình.
             </Text>
           </View>
         </>

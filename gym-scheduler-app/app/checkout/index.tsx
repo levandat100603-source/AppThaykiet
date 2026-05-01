@@ -9,20 +9,29 @@ import {
   Alert,
   ActivityIndicator,
     Platform,
-    useWindowDimensions
+    useWindowDimensions,
 } from 'react-native';
+import * as ExpoLinking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { useCart } from '../../src/api/context/CartContext';
 import { api } from '../../src/api/client';
 import { UI } from '../../src/ui/design';
+import { useVNPay } from '../../src/hooks/useVNPay';
+import VNPayQRModal from '../../components/VNPayQRModal';
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { cart, cartTotal, clearCart, removeFromCart } = useCart(); 
+    const { cart, cartTotal, cartCount, clearCart, removeFromCart } = useCart(); 
+  const { createPaymentUrl, loading: vnpayLoading } = useVNPay();
   
   const [paymentMethod, setPaymentMethod] = useState('bank_transfer');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showVNPayQR, setShowVNPayQR] = useState(false);
+  const [vnpayUrl, setVnpayUrl] = useState('');
+  const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
+  const [orderAmount, setOrderAmount] = useState(0);
+  
     const { width } = useWindowDimensions();
     const isMobileLayout = width < 900;
     const isSmallPhone = width < 420;
@@ -63,22 +72,41 @@ export default function CheckoutPage() {
     setIsProcessing(true);
 
     try {
-      const response = await api.post('/checkout', {
+      // First, create order
+      const checkoutResponse = await api.post('/checkout', {
         cart: cart,
         payment_method: paymentMethod,
         total: totalAmount
       });
 
-      if (response.status === 200) {
-        clearCart(); 
+      if (!checkoutResponse.data?.success) {
+        throw new Error(checkoutResponse.data?.message || 'Tạo đơn hàng thất bại');
+      }
 
+      const orderId = checkoutResponse.data.order_id;
+
+      // If VNPay, create payment URL and show QR modal
+      if (paymentMethod === 'vnpay') {
+                const appReturnUrl = ExpoLinking.createURL('/vnpay-callback');
+                const vnpayResponse = await createPaymentUrl(orderId, appReturnUrl);
+        
+        if (vnpayResponse.success && vnpayResponse.payment_url) {
+          setOrderAmount(totalAmount);
+          clearCart();
+          setCurrentOrderId(orderId);
+          setVnpayUrl(vnpayResponse.payment_url);
+          setShowVNPayQR(true);
+        } else {
+          throw new Error(vnpayResponse.message || 'Tạo URL thanh toán thất bại');
+        }
+      } else {
+        // For other payment methods, order is immediately completed
+        clearCart();
         
         if (Platform.OS === 'web') {
-            
             alert("✅ Thanh toán thành công!\nCảm ơn bạn đã sử dụng dịch vụ. Hệ thống đã cập nhật thông tin của bạn.");
             router.replace('/profile');
         } else {
-            
             Alert.alert(
                 "✅ Thanh toán thành công!", 
                 "Cảm ơn bạn đã sử dụng dịch vụ. Hệ thống đã cập nhật thông tin của bạn.",
@@ -89,7 +117,7 @@ export default function CheckoutPage() {
 
     } catch (error: any) {
       console.log("Checkout Error:", error);
-      const msg = error.response?.data?.message || "Có lỗi kết nối đến máy chủ.";
+      const msg = error.response?.data?.message || error.message || "Có lỗi kết nối đến máy chủ.";
       
       if (Platform.OS === 'web') {
           alert("Thanh toán thất bại ❌\n" + msg);
@@ -115,7 +143,7 @@ export default function CheckoutPage() {
             {}
             <View style={[styles.leftColumn, isMobileLayout && { width: '100%', minWidth: 0, flex: 0 }]}>
                 <View style={styles.card}>
-                    <Text style={styles.cardTitle}>Giỏ hàng của bạn ({cart.length})</Text>
+                    <Text style={styles.cardTitle}>Giỏ hàng của bạn ({cartCount})</Text>
                     
                     {cart.length === 0 ? (
                         <View style={styles.emptyCartBox}>
@@ -207,6 +235,18 @@ export default function CheckoutPage() {
 
                     {}
                     <Pressable 
+                        style={[styles.methodOption, paymentMethod === 'vnpay' && styles.methodActive]} 
+                        onPress={() => setPaymentMethod('vnpay')}
+                    >
+                        <View style={{flexDirection: 'row', gap: 10, alignItems: 'center'}}>
+                            <MaterialCommunityIcons name="credit-card" size={24} color="#1f2937" />
+                            <Text style={styles.methodText}>VNPay (Thẻ/Ví điện tử)</Text>
+                        </View>
+                        {paymentMethod === 'vnpay' && <Ionicons name="checkmark-circle" size={20} color="#2563eb" />}
+                    </Pressable>
+
+                    {}
+                    <Pressable 
                         style={[styles.methodOption, paymentMethod === 'bank_transfer' && styles.methodActive]} 
                         onPress={() => setPaymentMethod('bank_transfer')}
                     >
@@ -243,15 +283,16 @@ export default function CheckoutPage() {
 
                     {}
                     <Pressable 
-                        style={[styles.payBtn, (cart.length === 0 || isProcessing) && styles.payBtnDisabled]}
-                        disabled={cart.length === 0 || isProcessing}
+                        style={[styles.payBtn, (cart.length === 0 || isProcessing || vnpayLoading) && styles.payBtnDisabled]}
+                        disabled={cart.length === 0 || isProcessing || vnpayLoading}
                         onPress={handlePayment}
                     >
-                        {isProcessing ? (
+                        {isProcessing || vnpayLoading ? (
                             <ActivityIndicator color="#fff" />
                         ) : (
                             <Text style={styles.payBtnText}>
-                                {paymentMethod === 'bank_transfer' ? 'Đặt hàng & Chuyển khoản' : 'Xác nhận thanh toán'}
+                                {paymentMethod === 'vnpay' ? 'Thanh toán VNPay' : 
+                                 paymentMethod === 'bank_transfer' ? 'Đặt hàng & Chuyển khoản' : 'Xác nhận thanh toán'}
                             </Text>
                         )}
                     </Pressable>
@@ -263,6 +304,21 @@ export default function CheckoutPage() {
             </View>
         </View>
       </ScrollView>
+
+      {/* VNPay QR Modal */}
+      {currentOrderId && (
+        <VNPayQRModal
+          visible={showVNPayQR}
+          paymentUrl={vnpayUrl}
+          orderId={currentOrderId}
+          amount={orderAmount}
+          loading={vnpayLoading}
+          onClose={() => setShowVNPayQR(false)}
+          onOpenPayment={() => {
+            // Payment opened, keep modal visible for user feedback
+          }}
+        />
+      )}
     </View>
   );
 }

@@ -184,6 +184,7 @@ export default function CustomHeader() {
       { id: 'admin-packages', title: 'Gói tập', icon: 'card-account-details', action: () => router.push({ pathname: '/admin/dashboard', params: { tab: 'packages' } } as any) },
       { id: 'admin-members', title: 'Thành viên', icon: 'account-group-outline', action: () => router.push({ pathname: '/admin/dashboard', params: { tab: 'members' } } as any) },
       { id: 'admin-bookings', title: 'Xác nhận lịch', icon: 'clipboard-check-outline', action: () => router.push({ pathname: '/admin/dashboard', params: { tab: 'bookings' } } as any) },
+      { id: 'admin-payroll', title: 'Thanh toán lương', icon: 'cash-check', action: () => router.push('/admin/payroll' as any) },
       { id: 'admin-allinfo', title: 'Dữ liệu mở rộng', icon: 'chart-bar', action: () => router.push('/admin/allinfo' as any) },
     ],
     [router]
@@ -361,7 +362,14 @@ export default function CustomHeader() {
                       }}
                     >
                       <MaterialCommunityIcons name={item.icon as any} size={20} color={active ? colors.primary : colors.text} />
-                      <Text style={[styles.drawerItemText, { color: active ? colors.primary : colors.text }]}>{item.title}</Text>
+                      <View style={styles.drawerItemTitleRow}>
+                        <Text style={[styles.drawerItemText, { color: active ? colors.primary : colors.text }]}>{item.title}</Text>
+                        {item.id === 'checkout' && cartCount > 0 && (
+                          <View style={[styles.drawerCountBadge, { backgroundColor: '#ef4444' }]}>
+                            <Text style={styles.drawerCountBadgeText}>{cartCount}</Text>
+                          </View>
+                        )}
+                      </View>
                     </Pressable>
                   );
                 })}
@@ -581,6 +589,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
   },
+  drawerItemTitleRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   drawerItemLeft: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -589,6 +603,20 @@ const styles = StyleSheet.create({
   drawerItemText: {
     fontSize: 15,
     fontWeight: '700',
+    fontFamily: UI.font.body,
+  },
+  drawerCountBadge: {
+    minWidth: 22,
+    height: 22,
+    paddingHorizontal: 7,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  drawerCountBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
     fontFamily: UI.font.body,
   },
   adminSection: {

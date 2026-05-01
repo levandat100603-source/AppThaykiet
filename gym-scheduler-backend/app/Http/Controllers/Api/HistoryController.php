@@ -91,4 +91,59 @@ class HistoryController extends Controller
             'trainers' => $trainers
         ]);
     }
+
+    /**
+     * Get payment order history for user
+     */
+    public function getPaymentOrders()
+    {
+        $user = Auth::user();
+        $perPage = 10;
+        $page = request()->query('page', 1);
+
+        // Get total count
+        $totalCount = DB::table('orders')
+            ->where('user_id', $user->id)
+            ->count();
+
+        // Get paginated orders with items
+        $orders = DB::table('orders')
+            ->where('user_id', $user->id)
+            ->orderBy('created_at', 'desc')
+            ->skip(($page - 1) * $perPage)
+            ->take($perPage)
+            ->get();
+
+        // Map orders with order items
+        $ordersWithItems = $orders->map(function ($order) {
+            $items = DB::table('order_items')
+                ->where('order_id', $order->id)
+                ->get();
+
+            return [
+                'id' => $order->id,
+                'total_amount' => (int)$order->total_amount,
+                'payment_method' => $order->payment_method,
+                'status' => $order->status,
+                'vnpay_transaction_id' => $order->vnpay_transaction_id ?? null,
+                'vnpay_response_code' => $order->vnpay_response_code ?? null,
+                'vnpay_response_message' => $order->vnpay_response_message ?? null,
+                'created_at' => $order->created_at,
+                'payment_at' => in_array($order->status, ['completed', 'failed', 'cancelled'], true)
+                    ? ($order->updated_at ?? $order->created_at)
+                    : null,
+                'items' => $items->toArray()
+            ];
+        });
+
+        $lastPage = ceil($totalCount / $perPage);
+
+        return response()->json([
+            'orders' => $ordersWithItems,
+            'total' => $totalCount,
+            'current_page' => (int)$page,
+            'last_page' => (int)$lastPage,
+            'per_page' => $perPage
+        ]);
+    }
 }

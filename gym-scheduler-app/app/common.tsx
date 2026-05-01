@@ -11,6 +11,7 @@ import {
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { api } from '../src/api/client';
+import { useCart } from '../src/api/context/CartContext';
 import { UI, getThemeColors } from '../src/ui/design';
 import { useThemeMode } from '../src/ui/theme-mode';
 
@@ -29,6 +30,7 @@ type UserHistory = {
 
 export default function CommonFeaturesScreen() {
   const router = useRouter();
+  const { cartCount } = useCart();
   const { isDark } = useThemeMode();
   const colors = getThemeColors(isDark);
 
@@ -70,6 +72,7 @@ export default function CommonFeaturesScreen() {
     { id: 'dashboard-stats', title: 'Dashboard stats', icon: 'chart-line', path: '/dashboard-stats' },
     { id: 'history', title: 'Lich su nguoi dung', icon: 'history', path: '/history' },
     { id: 'bookings', title: 'Booking cua toi', icon: 'calendar-check-outline', path: '/profile/bookings' },
+    { id: 'payments', title: 'Lich su thanh toan', icon: 'receipt-text-outline', path: '/profile/payments' },
     { id: 'notifications', title: 'Thong bao', icon: 'bell-outline', path: '/notifications' },
     { id: 'profile', title: 'Ho so ca nhan', icon: 'account-circle-outline', path: '/profile' },
     { id: 'checkout', title: 'Thanh toan / Checkout', icon: 'cart-outline', path: '/checkout' },
@@ -121,6 +124,11 @@ export default function CommonFeaturesScreen() {
               <View style={styles.linkLeft}>
                 <MaterialCommunityIcons name={link.icon as any} size={20} color={colors.primary} />
                 <Text style={[styles.linkText, { color: colors.text }]}>{link.title}</Text>
+                {link.id === 'checkout' && cartCount > 0 && (
+                  <View style={[styles.cartCountPill, { backgroundColor: '#ef4444' }]}>
+                    <Text style={styles.cartCountPillText}>{cartCount}</Text>
+                  </View>
+                )}
               </View>
               <MaterialCommunityIcons name="chevron-right" size={20} color={colors.textMuted} />
             </Pressable>
@@ -196,6 +204,20 @@ const styles = StyleSheet.create({
   linkText: {
     fontSize: 15,
     fontWeight: '700',
+    fontFamily: UI.font.body,
+  },
+  cartCountPill: {
+    minWidth: 22,
+    height: 22,
+    paddingHorizontal: 7,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cartCountPillText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
     fontFamily: UI.font.body,
   },
 });
