@@ -328,6 +328,7 @@ export default function TrainersPage() {
   const [selectedMember, setSelectedMember] = useState<any | null>(null);
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
   const { width, height } = useWindowDimensions();
   const isSmallPhone = width < 390;
   const isCompact = width < 360;
@@ -374,6 +375,15 @@ export default function TrainersPage() {
   );
 
   const formatCurrency = (amount: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
+  const filteredTrainers = trainers.filter((trainer) => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.trim().toLowerCase();
+    return (
+      (trainer.name || '').toLowerCase().includes(query) ||
+      (trainer.spec || '').toLowerCase().includes(query) ||
+      (trainer.availability || '').toLowerCase().includes(query)
+    );
+  });
 
   const renderTrainerItem = ({ item, index }: { item: Trainer; index: number }) => {
     
@@ -435,6 +445,16 @@ export default function TrainersPage() {
       <View style={[styles.headerContainer, isCompact && styles.headerContainerCompact]}>
         <Text style={[styles.pageTitle, isCompact && styles.pageTitleCompact, { color: colors.text }]}>Huấn luyện viên</Text>
         <Text style={[styles.pageDesc, isCompact && styles.pageDescCompact, { color: colors.textMuted }]}>Chọn HLV phù hợp để tập luyện</Text>
+
+        <View style={{ width: '100%', maxWidth: 600, marginTop: 12 }}>
+          <TextInput
+            style={[styles.searchInput, { borderColor: colors.border, backgroundColor: colors.surfaceMuted, color: colors.text }]}
+            placeholder="Tìm theo tên, chuyên môn, thời gian..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholderTextColor={colors.textMuted}
+          />
+        </View>
       </View>
 
       {loading ? (
@@ -446,7 +466,7 @@ export default function TrainersPage() {
       ) : (
         trainers.length > 0 ? (
           <FlatList
-            data={trainers}
+            data={filteredTrainers}
             keyExtractor={(item) => item.id.toString()}
             renderItem={renderTrainerItem}
             contentContainerStyle={[styles.listContent, isCompact && styles.listContentCompact]}
@@ -581,6 +601,15 @@ const styles = StyleSheet.create({
   },
   pageDescCompact: {
     fontSize: 12,
+  },
+  searchInput: {
+    borderWidth: 1,
+    borderColor: UI.colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    fontFamily: UI.font.body,
   },
   listContent: { paddingHorizontal: 8, paddingTop: 16, paddingBottom: 40, width: '100%', maxWidth: 600, alignSelf: 'center' },
   listContentCompact: { paddingHorizontal: 4 },

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Support\GymClassSchedule;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
@@ -191,6 +192,13 @@ class OrderController extends Controller
         }
 
         foreach ($schedules as $scheduleStr) {
+            $scheduleParts = array_map('trim', explode('|', $scheduleStr, 2));
+            $scheduleDate = $scheduleParts[0] ?? '';
+
+            if (!GymClassSchedule::isOccurrenceActive($scheduleDate, $item['time'] ?? '', $item['duration'] ?? 0, now())) {
+                throw new \Exception('Lớp học này đã hết thời gian đăng ký hoặc đã kết thúc.');
+            }
+
             $existingBooking = DB::table('booking_classes')
                 ->where('user_id', $bookingUserId)
                 ->where('class_id', $item['id'])

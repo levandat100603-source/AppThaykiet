@@ -31,7 +31,7 @@
       "vapidPublicKey": "BMtiKAHmvlZDIIZIsKTI5cXzjHHQhlh5qOIQS7PBlFP1UDds6MOlslEccr6MZ5h7AJ10k2KNA17MykNICvkcT30"
     },
     "extra": {
-      "API_URL": "http://127.0.0.1:8000/api",
+      "API_URL": "https://gym-scheduler-3kbu.onrender.com/api",
       "router": {},
       "eas": {
         "projectId": "1c5f72c8-5c37-46bf-8d1c-0aab14a798a8"

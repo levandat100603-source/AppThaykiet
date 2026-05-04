@@ -107,7 +107,10 @@ class DashboardController extends Controller
         }
 
         
-        $targetRevenue = 50000000;
+        // Read target from database, fallback to default
+        $targetRevenue = (float) DB::table('system_settings')
+            ->where('key', 'monthly_revenue_target')
+            ->value('value') ?? 50000000;
         $progress = ($targetRevenue > 0) ? ($currentMonthData['revenue'] / $targetRevenue) * 100 : 0;
 
         return response()->json([
@@ -125,5 +128,19 @@ class DashboardController extends Controller
     public function reset()
     {
         return response()->json(['message' => 'Đã cập nhật dữ liệu!']);
+    }
+
+    public function updateTarget(Request $request)
+    {
+        $validated = $request->validate([
+            'target' => 'required|numeric|min:0'
+        ]);
+
+        DB::table('system_settings')->updateOrInsert(
+            ['key' => 'monthly_revenue_target'],
+            ['value' => (float) $validated['target'], 'type' => 'float', 'updated_at' => now()]
+        );
+
+        return response()->json(['success' => true, 'message' => 'Đã cập nhật mục tiêu doanh thu', 'target' => $validated['target']]);
     }
 }

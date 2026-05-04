@@ -173,6 +173,7 @@ Route::middleware('auth:sanctum')->group(function () {
     
     Route::get('/dashboard-stats', [DashboardController::class, 'index']);
     Route::post('/dashboard-reset', [DashboardController::class, 'reset']);
+    Route::post('/dashboard/update-target', [DashboardController::class, 'updateTarget']);
     Route::get('/user/history', [HistoryController::class, 'index']);
     Route::get('/user/orders', [HistoryController::class, 'getPaymentOrders']);
     Route::put('/user/profile', [AuthController::class, 'updateProfile']);

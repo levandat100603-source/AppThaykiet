@@ -78,9 +78,14 @@ const showAlert = (title: string, msg: string) => {
 
 const parseDate = (dateStr: string) => {
   if (!dateStr) return null;
-  const parts = dateStr.split('/');
+    const normalized = dateStr.trim();
+    const parts = normalized.includes('-') ? normalized.split('-') : normalized.split('/');
   if (parts.length !== 3) return null;
-  return new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+    const day = Number(parts[0]);
+    const month = Number(parts[1]);
+    const year = Number(parts[2]);
+    if (!day || !month || !year) return null;
+    return new Date(year, month - 1, day);
 };
 
 const formatDate = (date: Date) => {
@@ -114,6 +119,29 @@ const isFutureDate = (dateStr: string) => {
   today.setHours(0, 0, 0, 0);
   return inputDate.getTime() > today.getTime();
 };
+
+const parseClassTime = (hourStr: string, minuteStr: string, mode: string) => {
+    let hour = Number(hourStr);
+    const minute = Number(minuteStr);
+
+    if (Number.isNaN(hour) || Number.isNaN(minute)) {
+        return null;
+    }
+
+    if (mode === 'AM') {
+        if (hour === 12) hour = 0;
+    } else if (mode === 'PM' && hour < 12) {
+        hour += 12;
+    }
+
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+        return null;
+    }
+
+    return { hour, minute };
+};
+
+const normalizeClassDate = (dateStr: string) => dateStr.trim().replace(/\//g, '-');
 
 const formatDateFromDateObject = (date: Date) => {
   const d = date.getDate().toString().padStart(2, '0');
@@ -160,15 +188,19 @@ export default function AdminDashboard() {
   
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-
-    const [modalVisible, setModalVisible] = useState(false);
-  const [editingItem, setEditingItem] = useState<any>(null);
+    const [searchEmail, setSearchEmail] = useState('');
+  const [searchClasses, setSearchClasses] = useState('');
+  const [searchTrainers, setSearchTrainers] = useState('');
+  const [searchBookings, setSearchBookings] = useState('');
+  const [searchSchedules, setSearchSchedules] = useState('');
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [userSearch, setUserSearch] = useState('');
   const [memberFormMode, setMemberFormMode] = useState<'manual' | 'pick'>('manual');
   const [showTrainerDropdown, setShowTrainerDropdown] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedDateForClass, setSelectedDateForClass] = useState<Date>(new Date());
+  const [modalVisible, setModalVisible] = useState(false);
+  const [editingItem, setEditingItem] = useState<any>(null);
     const webClassDateInputRef = React.useRef<HTMLInputElement | null>(null);
   
   const [formData, setFormData] = useState({
@@ -256,6 +288,14 @@ export default function AdminDashboard() {
         }
     }, [fetchData, isInitializing, token, user?.role]);
 
+    const Cell = ({ flex = 1, minWidth, children, style }: { flex?: number; minWidth?: number; children: any; style?: any }) => {
+        // Ensure a consistent minimum width per column so header and rows align on small screens
+        const computedMinWidth = minWidth ?? Math.max(100, Math.round(Number(flex) * 110));
+        return (
+            <View style={[{ flex, paddingHorizontal: 8, minWidth: computedMinWidth }, style]}>{children}</View>
+        );
+    };
+
   const onRefresh = () => {
     setRefreshing(true);
     fetchData();
@@ -283,17 +323,49 @@ export default function AdminDashboard() {
   const handleSave = async () => {
     console.log('--- Bắt đầu Lưu ---');
 
+    const cleanDuration = formData.duration ? parseInt(formData.duration.toString().replace(/[^0-9]/g, '')) : 0;
+    const cleanPrice = formData.price ? Number(formData.price.toString().replace(/[^0-9]/g, '')) : 0;
+    const combinedTime = `${formData.timeHour}:${formData.timeMinute} ${formData.timeMode}`;
+
     if (!formData.name) return showAlert('Thiếu thông tin', 'Vui lòng nhập tên!');
     if (activeTab === 'classes' && !formData.duration) return showAlert('Thiếu thông tin', 'Vui lòng nhập thời lượng!');
     if (activeTab === 'classes' && !formData.days) return showAlert('Thiếu thông tin', 'Vui lòng chọn ngày tập!');
     if (activeTab === 'classes' && !formData.trainerName) return showAlert('Thiếu thông tin', 'Vui lòng chọn huấn luyện viên!');
 
-    // Validate that all class dates are in the future
+    // Validate that class dates are today/future and the class has not already ended.
     if (activeTab === 'classes') {
-        const dates = formData.days.split(',').map(d => d.trim());
+        const dates = formData.days.split(',').map(d => d.trim()).filter(Boolean);
+        const timeParts = parseClassTime(formData.timeHour, formData.timeMinute, formData.timeMode);
+
+        if (!timeParts) {
+            return showAlert('Lỗi', 'Giờ tập không hợp lệ!');
+        }
+
         for (const dateStr of dates) {
-            if (!isFutureDate(dateStr)) {
-                return showAlert('Lỗi', `Ngày ${dateStr} không phải là ngày trong tương lai!`);
+            const normalizedDate = normalizeClassDate(dateStr);
+            const inputDate = parseDate(normalizedDate);
+
+            if (!inputDate) {
+                return showAlert('Lỗi', `Ngày ${normalizedDate} không hợp lệ!`);
+            }
+
+            // Require strictly future dates (do not allow today)
+            const todayStart = new Date();
+            todayStart.setHours(0,0,0,0);
+            const inputStart = new Date(inputDate);
+            inputStart.setHours(0,0,0,0);
+            if (inputStart.getTime() <= todayStart.getTime()) {
+                return showAlert('Lỗi', `Ngày ${normalizedDate} phải là ngày trong tương lai (không bao gồm hôm nay)!`);
+            }
+
+            const start = new Date(inputDate);
+            start.setHours(timeParts.hour, timeParts.minute, 0, 0);
+
+            const end = new Date(start);
+            end.setMinutes(end.getMinutes() + cleanDuration);
+
+            if (end.getTime() <= Date.now()) {
+                return showAlert('Lỗi', `Ngày ${normalizedDate} đã kết thúc, không thể tạo lớp!`);
             }
         }
     }
@@ -308,9 +380,6 @@ export default function AdminDashboard() {
         if (!isValidEmail(formData.email)) return showAlert('Lỗi', 'Email không đúng định dạng!');
     }
 
-    const cleanDuration = formData.duration ? parseInt(formData.duration.toString().replace(/[^0-9]/g, '')) : 0;
-    const cleanPrice = formData.price ? Number(formData.price.toString().replace(/[^0-9]/g, '')) : 0;
-    const combinedTime = `${formData.timeHour}:${formData.timeMinute} ${formData.timeMode}`;
     const benefitsCount = formData.benefitsText ? formData.benefitsText.split('\n').filter(line => line.trim() !== '').length : 0;
 
     const payload = {
@@ -534,15 +603,17 @@ export default function AdminDashboard() {
     }
   };
 
-  const renderBookings = () => (
+  const renderBookings = (filteredBookingsData?: any[]) => {
+    const data = filteredBookingsData || bookings;
+    return (
     <ScrollView contentContainerStyle={{paddingBottom: 20}}>
-        {bookings.length === 0 ? (
+        {data.length === 0 ? (
             <View style={{alignItems: 'center', paddingVertical: 40}}>
                 <MaterialCommunityIcons name="calendar-check" size={64} color="#cbd5e1" />
                 <Text style={{fontSize: 16, color: '#94a3b8', marginTop: 16}}>Không có lịch hẹn nào chờ xác nhận</Text>
             </View>
         ) : (
-            bookings.map((booking: any) => (
+            data.map((booking: any) => (
                 <View key={booking.id} style={styles.bookingCard}>
                     <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12}}>
                         <View style={{flex: 1}}>
@@ -579,9 +650,18 @@ export default function AdminDashboard() {
         )}
     </ScrollView>
   );
+  };
 
   const renderContent = () => {
         if (activeTab === 'trainer-schedules') {
+            const filteredSchedules = trainerSchedules.filter((schedule: any) => {
+                if (!searchSchedules) return true;
+                const trainerName = String(schedule.trainer_name || '').toLowerCase();
+                const trainerEmail = String(schedule.trainer_email || '').toLowerCase();
+                const query = searchSchedules.toLowerCase();
+                return trainerName.includes(query) || trainerEmail.includes(query);
+            });
+
             const matchesTrainerSchedule = (trainer: any, schedule: any) => {
                 const trainerName = String(trainer.name || '').trim().toLowerCase();
                 const trainerEmail = String(trainer.email || '').trim().toLowerCase();
@@ -600,10 +680,10 @@ export default function AdminDashboard() {
             };
 
             const trainersWithSchedules = trainers.filter((trainer: any) =>
-                trainerSchedules.some((schedule: any) => matchesTrainerSchedule(trainer, schedule))
+                filteredSchedules.some((schedule: any) => matchesTrainerSchedule(trainer, schedule))
             );
             const trainersWithoutSchedules = trainers.filter((trainer: any) =>
-                !trainerSchedules.some((schedule: any) => matchesTrainerSchedule(trainer, schedule))
+                !filteredSchedules.some((schedule: any) => matchesTrainerSchedule(trainer, schedule))
             );
 
             const renderTrainerScheduleCard = (trainer: any) => {
@@ -672,6 +752,17 @@ export default function AdminDashboard() {
                             <Text style={styles.cardSubtitle}>Chạm vào từng HLV để xem khung giờ đã đăng ký</Text>
                         </View>
                     </View>
+                    <View style={{ marginBottom: 12 }}>
+                        <Text style={{ fontSize: 13, color: '#64748b', marginBottom: 6 }}>Tìm theo tên hoặc email</Text>
+                        <TextInput
+                            style={[styles.input, { paddingHorizontal: 12 }]}
+                            placeholder="Nhập tên hoặc email HLV..."
+                            placeholderTextColor="#94a3b8"
+                            value={searchSchedules}
+                            onChangeText={setSearchSchedules}
+                            autoCapitalize="none"
+                        />
+                    </View>
 
                     <View style={styles.scheduleSummaryGrid}>
                         <View style={styles.scheduleSummaryCard}>
@@ -706,7 +797,29 @@ export default function AdminDashboard() {
         }
 
     if (activeTab === 'bookings') {
-      return renderBookings();
+      const filteredBookings = bookings.filter((booking: any) => {
+        if (!searchBookings) return true;
+        const name = String(booking.user_name || '').toLowerCase();
+        const email = String(booking.user_email || '').toLowerCase();
+        const query = searchBookings.toLowerCase();
+        return name.includes(query) || email.includes(query);
+      });
+      return (
+        <>
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ fontSize: 13, color: '#64748b', marginBottom: 6 }}>Tìm theo tên hoặc email</Text>
+            <TextInput
+              style={[styles.input, { paddingHorizontal: 12 }]}
+              placeholder="Nhập tên hoặc email học viên..."
+              placeholderTextColor="#94a3b8"
+              value={searchBookings}
+              onChangeText={setSearchBookings}
+              autoCapitalize="none"
+            />
+          </View>
+          {renderBookings(filteredBookings)}
+        </>
+      );
     }
     
     let data: any[] = [];
@@ -715,137 +828,190 @@ export default function AdminDashboard() {
     else if (activeTab === 'packages') data = packages;
     else if (activeTab === 'members') data = members;
 
-    return (
-      <View style={styles.card}>
+        return (
+            <View style={styles.card}>
         <View style={styles.cardHeader}>
             <Text style={styles.cardTitle}>{activeTab === 'trainers' ? 'Danh sách huấn luyện viên' : activeTab === 'classes' ? 'Danh sách lớp tập' : activeTab === 'packages' ? 'Danh sách gói tập' : 'Danh sách thành viên'}</Text>
             <Pressable style={styles.addBtn} onPress={() => openModal(null)}><Ionicons name="add" size={18} color="#fff" /><Text style={styles.addBtnText}>Thêm mới</Text></Pressable>
         </View>
+                {activeTab === 'classes' && (
+                    <View style={{ marginBottom: 12 }}>
+                        <Text style={{ fontSize: 13, color: '#64748b', marginBottom: 6 }}>Tìm theo tên lớp hoặc HLV</Text>
+                        <TextInput
+                            style={[styles.input, { paddingHorizontal: 12 }]}
+                            placeholder="Nhập tên lớp hoặc HLV..."
+                            placeholderTextColor="#94a3b8"
+                            value={searchClasses}
+                            onChangeText={setSearchClasses}
+                            autoCapitalize="none"
+                        />
+                    </View>
+                )}
+                {activeTab === 'trainers' && (
+                    <View style={{ marginBottom: 12 }}>
+                        <Text style={{ fontSize: 13, color: '#64748b', marginBottom: 6 }}>Tìm theo tên hoặc email</Text>
+                        <TextInput
+                            style={[styles.input, { paddingHorizontal: 12 }]}
+                            placeholder="Nhập tên hoặc email HLV..."
+                            placeholderTextColor="#94a3b8"
+                            value={searchTrainers}
+                            onChangeText={setSearchTrainers}
+                            autoCapitalize="none"
+                        />
+                    </View>
+                )}
+                {activeTab === 'members' && (
+                    <View style={{ marginBottom: 12 }}>
+                        <Text style={{ fontSize: 13, color: '#64748b', marginBottom: 6 }}>Tìm theo email</Text>
+                        <TextInput
+                            style={[styles.input, { paddingHorizontal: 12 }]}
+                            placeholder="Nhập email để tìm..."
+                            placeholderTextColor="#94a3b8"
+                            value={searchEmail}
+                            onChangeText={setSearchEmail}
+                            keyboardType="email-address"
+                            autoCapitalize="none"
+                        />
+                    </View>
+                )}
         <ScrollView horizontal contentContainerStyle={{minWidth: '100%'}}>
             <View style={{width: '100%', minWidth: (activeTab === 'classes' || activeTab === 'members') ? 1000 : 900}}>
                 <View style={styles.tableHeader}>
                     {activeTab === 'trainers' ? (
                         <>
-                            <Text style={[styles.th, {flex: 2}]}>Tên</Text>
-                            <Text style={[styles.th, {flex: 2}]}>Chuyên môn</Text>
-                            <Text style={[styles.th, {flex: 1}]}>Kinh nghiệm</Text>
-                            <Text style={[styles.th, {flex: 1}]}>Đánh giá</Text>
-                            <Text style={[styles.th, {flex: 1.5}]}>Giá/buổi</Text>
-                            <Text style={[styles.th, {flex: 2}]}>Thời gian</Text>
+                            <Cell flex={2}><Text style={styles.th}>Tên</Text></Cell>
+                            <Cell flex={2}><Text style={styles.th}>Chuyên môn</Text></Cell>
+                            <Cell flex={1}><Text style={styles.th}>Kinh nghiệm</Text></Cell>
+                            <Cell flex={1}><Text style={styles.th}>Đánh giá</Text></Cell>
+                            <Cell flex={1.5}><Text style={styles.th}>Giá/buổi</Text></Cell>
+                            <Cell flex={2}><Text style={styles.th}>Thời gian</Text></Cell>
                         </>
                     ) : activeTab === 'classes' ? (
                         <>
-                            <Text style={[styles.th, {flex: 2}]}>Tên lớp</Text>
-                            <Text style={[styles.th, {flex: 2}]}>HLV</Text>
-                            <Text style={[styles.th, {flex: 1}]}>Giờ</Text>
-                            <Text style={[styles.th, {flex: 1.5}]}>Địa điểm</Text>
-                            <Text style={[styles.th, {flex: 1}]}>Chỗ</Text>
-                            <Text style={[styles.th, {flex: 1}]}>ĐK</Text>
-                            <Text style={[styles.th, {flex: 1.5}]}>Giá</Text>
+                            <Cell flex={2}><Text style={styles.th}>Tên lớp</Text></Cell>
+                            <Cell flex={2}><Text style={styles.th}>HLV</Text></Cell>
+                            <Cell flex={1}><Text style={styles.th}>Giờ</Text></Cell>
+                            <Cell flex={1.5}><Text style={styles.th}>Địa điểm</Text></Cell>
+                            <Cell flex={1}><Text style={styles.th}>Chỗ</Text></Cell>
+                            <Cell flex={1}><Text style={styles.th}>ĐK</Text></Cell>
+                            <Cell flex={1.5}><Text style={styles.th}>Giá</Text></Cell>
                         </>
                     ) : activeTab === 'packages' ? (
                         <>
-                            <Text style={[styles.th, {flex: 2}]}>Tên gói</Text>
-                            <Text style={[styles.th, {flex: 1.5}]}>Thời hạn</Text>
-                            <Text style={[styles.th, {flex: 1.5}]}>Giá</Text>
-                            <Text style={[styles.th, {flex: 1.5}]}>Quyền lợi</Text>
-                            <Text style={[styles.th, {flex: 1.5}]}>Màu</Text>
-                            <Text style={[styles.th, {flex: 1.5}]}>Trạng thái</Text>
+                            <Cell flex={2}><Text style={styles.th}>Tên gói</Text></Cell>
+                            <Cell flex={1.5}><Text style={styles.th}>Thời hạn</Text></Cell>
+                            <Cell flex={1.5}><Text style={styles.th}>Giá</Text></Cell>
+                            <Cell flex={1.5}><Text style={styles.th}>Quyền lợi</Text></Cell>
+                            <Cell flex={1.5}><Text style={styles.th}>Màu</Text></Cell>
+                            <Cell flex={1.5}><Text style={styles.th}>Trạng thái</Text></Cell>
                         </>
                     ) : (
                             <>
-                                <Text style={[styles.th, {flex: 2}]}>Tên</Text>
-                                <Text style={[styles.th, {flex: 2.2}]}>Email</Text>
-                                <Text style={[styles.th, {flex: 1.3}]}>SĐT</Text>
-                                <Text style={[styles.th, {flex: 1.4}]}>Gói</Text>
-                                <Text style={[styles.th, {flex: 1.4}]}>Hết hạn</Text>
-                                <Text style={[styles.th, {flex: 1}]}>Trạng thái</Text>
+                                <Cell flex={2}><Text style={styles.th}>Tên</Text></Cell>
+                                <Cell flex={2.2}><Text style={styles.th}>Email</Text></Cell>
+                                <Cell flex={1.3}><Text style={styles.th}>SĐT</Text></Cell>
+                                <Cell flex={1.4}><Text style={styles.th}>Gói</Text></Cell>
+                                <Cell flex={1.4}><Text style={styles.th}>Hết hạn</Text></Cell>
+                                <Cell flex={1}><Text style={styles.th}>Trạng thái</Text></Cell>
                             </>
                     )}
-                    <Text style={[styles.th, {flex: 1, textAlign: 'right'}]}>Thao tác</Text>
+                    <Cell flex={1} style={{ alignItems: 'flex-end' }}><Text style={styles.th}>Thao tác</Text></Cell>
                 </View>
 
-                {(data || []).map((item: any) => (
+                                {((data || [])
+                                    .filter((it: any) => {
+                                        const query = activeTab === 'classes' ? searchClasses : activeTab === 'trainers' ? searchTrainers : searchEmail;
+                                        if (!query) return true;
+                                        if (activeTab === 'classes') {
+                                            const name = String(it.name || '').toLowerCase();
+                                            const trainer = String(it.trainer_name || it.trainerName || '').toLowerCase();
+                                            return name.includes(query.toLowerCase()) || trainer.includes(query.toLowerCase());
+                                        } else if (activeTab === 'trainers') {
+                                            const name = String(it.name || '').toLowerCase();
+                                            const email = String(it.email || '').toLowerCase();
+                                            return name.includes(query.toLowerCase()) || email.includes(query.toLowerCase());
+                                        } else {
+                                            const e = String(it.email || '').toLowerCase();
+                                            return e.includes(query.toLowerCase());
+                                        }
+                                    })
+                                ).map((item: any) => (
                     <View key={item.id} style={styles.tableRow}>
                         {activeTab === 'trainers' ? (
                             <>
-                                <View style={{flex: 2, flexDirection: 'row', alignItems: 'center', gap: 8}}>
-                                    {/* --- DÙNG HÀM getSmartImageUrl ĐỂ HIỂN THỊ ẢNH --- */}
-                                    <Image 
-                                        key={item.updated_at || item.id} 
-                                        source={{ 
-                                            // Thử lấy item.image (tên cột DB), nếu không có thì thử item.image_url
-                                            uri: getSmartImageUrl(item.image || item.image_url) 
-                                        }} 
-                                        style={{width: 32, height: 32, borderRadius: 16, backgroundColor: '#e2e8f0', borderWidth: 1, borderColor: '#cbd5e1'}}
+                                <Cell flex={2} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                    <Image
+                                        key={item.updated_at || item.id}
+                                        source={{ uri: getSmartImageUrl(item.image || item.image_url) }}
+                                        style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#e2e8f0', borderWidth: 1, borderColor: '#cbd5e1' }}
                                     />
-                                    <Text style={[styles.td, {fontWeight: '600'}]}>{item.name}</Text>
-                                </View>
-                                <Text style={[styles.td, {flex: 2}]}>{item.spec}</Text>
-                                <Text style={[styles.td, {flex: 1}]}>{item.exp}</Text>
-                                <View style={{flex: 1, flexDirection: 'row', alignItems: 'center'}}>
+                                    <Text style={[styles.td, { fontWeight: '600' }]}>{item.name}</Text>
+                                </Cell>
+                                <Cell flex={2}><Text style={styles.td}>{item.spec}</Text></Cell>
+                                <Cell flex={1}><Text style={styles.td}>{item.exp}</Text></Cell>
+                                <Cell flex={1} style={{ flexDirection: 'row', alignItems: 'center' }}>
                                     <MaterialCommunityIcons name="star" size={14} color="#f59e0b" />
-                                    <Text style={[styles.td, {fontWeight: '700', marginLeft: 4}]}>{item.rating}</Text>
-                                </View>
-                                <Text style={[styles.td, {flex: 1.5}]}>{formatMoney(Number(item.price))}</Text>
-                                <Text style={[styles.td, {flex: 2, color: '#64748b'}]}>{item.availability}</Text>
+                                    <Text style={[styles.td, { fontWeight: '700', marginLeft: 8 }]}>{item.rating}</Text>
+                                </Cell>
+                                <Cell flex={1.5}><Text style={styles.td}>{formatMoney(Number(item.price))}</Text></Cell>
+                                <Cell flex={2}><Text style={[styles.td, { color: '#64748b' }]}>{item.availability}</Text></Cell>
                             </>
                         ) : activeTab === 'classes' ? (
                             <>
-                                <Text style={[styles.td, {flex: 2, fontWeight: '600'}]}>{item.name}</Text>
-                                <Text style={[styles.td, {flex: 2, color: '#64748b'}]}>{item.trainer_name || item.trainerName}</Text>
-                                <Text style={[styles.td, {flex: 1}]}>{item.time}</Text>
-                                <Text style={[styles.td, {flex: 1.5}]}>{item.location}</Text>
-                                <Text style={[styles.td, {flex: 1}]}>{item.capacity}</Text>
-                                <View style={{flex: 1}}>
-                                    <View style={{backgroundColor: (item.registered/item.capacity) > 0.8 ? (isDark ? '#713f12' : '#fef3c7') : (isDark ? '#14532d' : '#dcfce7'), paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, alignSelf: 'flex-start'}}>
-                                        <Text style={{fontSize: 11, fontWeight: '700', color: (item.registered/item.capacity) > 0.8 ? (isDark ? '#fbbf24' : '#d97706') : (isDark ? '#4ade80' : '#166534')}}>{item.registered}/{item.capacity}</Text>
+                                <Cell flex={2}><Text style={[styles.td, { fontWeight: '600' }]}>{item.name}</Text></Cell>
+                                <Cell flex={2}><Text style={[styles.td, { color: '#64748b' }]}>{item.trainer_name || item.trainerName}</Text></Cell>
+                                <Cell flex={1}><Text style={styles.td}>{item.time}</Text></Cell>
+                                <Cell flex={1.5}><Text style={styles.td}>{item.location}</Text></Cell>
+                                <Cell flex={1}><Text style={styles.td}>{item.capacity}</Text></Cell>
+                                <Cell flex={1}>
+                                    <View style={{ backgroundColor: (item.registered / item.capacity) > 0.8 ? (isDark ? '#713f12' : '#fef3c7') : (isDark ? '#14532d' : '#dcfce7'), paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, alignSelf: 'flex-start' }}>
+                                        <Text style={{ fontSize: 11, fontWeight: '700', color: (item.registered / item.capacity) > 0.8 ? (isDark ? '#fbbf24' : '#d97706') : (isDark ? '#4ade80' : '#166534') }}>{item.registered}/{item.capacity}</Text>
                                     </View>
-                                </View>
-                                <Text style={[styles.td, {flex: 1.5}]}>{formatMoney(Number(item.price))}</Text>
+                                </Cell>
+                                <Cell flex={1.5}><Text style={styles.td}>{formatMoney(Number(item.price))}</Text></Cell>
                             </>
                         ) : activeTab === 'packages' ? (
                             <>
-                                <View style={{flex: 2, flexDirection: 'row', alignItems: 'center', gap: 6}}>
-                                    <Text style={[styles.td, {fontWeight: '700'}]}>{item.name}</Text>
-                                    {(item.is_popular === 1 || item.isPopular) && <View style={{backgroundColor: isDark ? '#1e3a8a' : '#dbeafe', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}><Text style={{fontSize: 10, color: isDark ? '#93c5fd' : '#2563eb', fontWeight: '600'}}>Phổ biến</Text></View>}
-                                </View>
-                                <Text style={[styles.td, {flex: 1.5}]}>{item.duration} tháng</Text>
-                                <View style={{flex: 1.5}}>
-                                    <Text style={[styles.td, {fontWeight: '700'}]}>{formatMoney(Number(item.price))}</Text>
-                                    {(item.old_price || item.oldPrice) ? <Text style={{fontSize: 11, color: '#94a3b8', textDecorationLine: 'line-through'}}>{formatMoney(Number(item.old_price || item.oldPrice))}</Text> : null}
-                                </View>
-                                <Text style={[styles.td, {flex: 1.5}]}>{item.benefits} quyền lợi</Text>
-                                <View style={{flex: 1.5}}>
-                                    <View style={{backgroundColor: item.color === 'amber' ? (isDark ? '#713f12' : '#fffbeb') : (item.color === 'green' ? (isDark ? '#14532d' : '#dcfce7') : (item.color === 'purple' ? (isDark ? '#581c87' : '#f3e8ff') : (isDark ? '#1e3a8a' : '#dbeafe'))), paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, alignSelf: 'flex-start'}}>
-                                        <Text style={{fontSize: 11, fontWeight: '600', color: colors.text}}>{item.color}</Text>
+                                <Cell flex={2} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                    <Text style={[styles.td, { fontWeight: '700' }]}>{item.name}</Text>
+                                    {(item.is_popular === 1 || item.isPopular) && <View style={{ backgroundColor: isDark ? '#1e3a8a' : '#dbeafe', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}><Text style={{ fontSize: 10, color: isDark ? '#93c5fd' : '#2563eb', fontWeight: '600' }}>Phổ biến</Text></View>}
+                                </Cell>
+                                <Cell flex={1.5}><Text style={styles.td}>{item.duration} tháng</Text></Cell>
+                                <Cell flex={1.5}>
+                                    <Text style={[styles.td, { fontWeight: '700' }]}>{formatMoney(Number(item.price))}</Text>
+                                    {(item.old_price || item.oldPrice) ? <Text style={{ fontSize: 11, color: '#94a3b8', textDecorationLine: 'line-through' }}>{formatMoney(Number(item.old_price || item.oldPrice))}</Text> : null}
+                                </Cell>
+                                <Cell flex={1.5}><Text style={styles.td}>{item.benefits} quyền lợi</Text></Cell>
+                                <Cell flex={1.5}>
+                                    <View style={{ backgroundColor: item.color === 'amber' ? (isDark ? '#713f12' : '#fffbeb') : (item.color === 'green' ? (isDark ? '#14532d' : '#dcfce7') : (item.color === 'purple' ? (isDark ? '#581c87' : '#f3e8ff') : (isDark ? '#1e3a8a' : '#dbeafe'))), paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, alignSelf: 'flex-start' }}>
+                                        <Text style={{ fontSize: 11, fontWeight: '600', color: colors.text }}>{item.color}</Text>
                                     </View>
-                                </View>
-                                <View style={{flex: 1.5}}>
+                                </Cell>
+                                <Cell flex={1.5}>
                                     <View style={[styles.statusBadge, { backgroundColor: statusPalette(item.status === 'active').bg }]}>
                                         <Text style={[styles.statusText, { color: statusPalette(item.status === 'active').fg }]}>{item.status === 'active' ? 'Hoạt động' : 'Ngừng HĐ'}</Text>
                                     </View>
-                                </View>
+                                </Cell>
                             </>
                         ) : (
                             <>
-                                <Text style={[styles.td, {flex: 2, fontWeight: '600'}]}>{item.name}</Text>
-                                <Text style={[styles.td, {flex: 2.2}]}>{item.email}</Text>
-                                <Text style={[styles.td, {flex: 1.3}]}>{item.phone || ''}</Text>
-                                <Text style={[styles.td, {flex: 1.4}]}>{item.pack}</Text>
-                                <Text style={[styles.td, {flex: 1.4}]}>{item.end}</Text>
-                                <View style={{flex: 1}}>
+                                <Cell flex={2}><Text style={[styles.td, { fontWeight: '600' }]}>{item.name}</Text></Cell>
+                                <Cell flex={2.2}><Text style={styles.td}>{item.email}</Text></Cell>
+                                <Cell flex={1.3}><Text style={styles.td}>{item.phone || ''}</Text></Cell>
+                                <Cell flex={1.4}><Text style={styles.td}>{item.pack}</Text></Cell>
+                                <Cell flex={1.4}><Text style={styles.td}>{item.end}</Text></Cell>
+                                <Cell flex={1}>
                                     <View style={[styles.statusBadge, { backgroundColor: statusPalette(item.status === 'active').bg }]}>
                                         <Text style={[styles.statusText, { color: statusPalette(item.status === 'active').fg }]}>{item.status === 'active' ? 'Hoạt động' : 'Hết hạn'}</Text>
                                     </View>
-                                </View>
+                                </Cell>
                             </>
                         )}
 
-                        <View style={{flex: 1, flexDirection: 'row', justifyContent: 'flex-end', gap: 10}}>
+                        <Cell flex={1} style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }}>
                             <Pressable style={styles.actionBtn} onPress={() => openModal(item)}><MaterialCommunityIcons name="square-edit-outline" size={18} color="#2563eb" /></Pressable>
                             <Pressable style={styles.actionBtn} onPress={() => handleDelete(item.id)}><MaterialCommunityIcons name="trash-can-outline" size={18} color="#ef4444" /></Pressable>
-                        </View>
+                        </Cell>
                     </View>
                 ))}
             </View>
@@ -980,7 +1146,7 @@ export default function AdminDashboard() {
 
                     {/* Tách Ngày tập ra dòng riêng */}
                     <View style={{marginTop: 8}}>
-                        <Text style={styles.label}>Ngày tập (chỉ ngày trong tương lai)</Text>
+                        <Text style={styles.label}>Ngày tập (ngày hiện tại hoặc tương lai)</Text>
                         {Platform.OS === 'web' ? (
                             <View style={{gap: 8}}>
                                 <View style={{borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, overflow: 'hidden', backgroundColor: '#fff'}}>
@@ -1287,10 +1453,10 @@ export default function AdminDashboard() {
                         today.setHours(0, 0, 0, 0);
                         selectedDate.setHours(0, 0, 0, 0);
                         
-                        if (selectedDate.getTime() <= today.getTime()) {
-                            Alert.alert('Lỗi', 'Vui lòng chọn ngày trong tương lai');
-                            return;
-                        }
+                                if (selectedDate.getTime() <= today.getTime()) {
+                                    Alert.alert('Lỗi', 'Vui lòng chọn ngày trong tương lai (không bao gồm hôm nay)');
+                                    return;
+                                }
 
                         const formattedDate = formatDateFromDateObject(selectedDate);
                         const currentDates = formData.days ? formData.days.split(', ') : [];
@@ -1325,7 +1491,8 @@ const styles = StyleSheet.create({
     addBtn: { flexDirection: 'row', backgroundColor: UI.colors.primary, padding: 8, borderRadius: 6, alignItems: 'center' },
   addBtnText: { color: '#fff', marginLeft: 4, fontWeight: '600', fontSize: 13 },
   tableHeader: { flexDirection: 'row', borderBottomWidth: 1, borderColor: '#e2e8f0', paddingBottom: 10, marginBottom: 10 },
-  th: { fontSize: 12, fontWeight: '700', color: '#64748b' },
+    th: { fontSize: 12, fontWeight: '700', color: '#64748b', textAlign: 'left' },
+    cell: { paddingHorizontal: 8 },
   tableRow: { flexDirection: 'row', paddingVertical: 12, borderBottomWidth: 1, borderColor: '#f1f5f9', alignItems: 'center' },
   td: { fontSize: 14, color: '#334155' },
   actionBtn: { padding: 6, backgroundColor: '#f1f5f9', borderRadius: 6 },

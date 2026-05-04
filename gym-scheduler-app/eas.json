@@ -14,13 +14,14 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "http://127.0.0.1:8000/api"
+        "EXPO_PUBLIC_API_URL": "https://gym-scheduler-3kbu.onrender.com/api"
       }
     },
     "production": {
       "autoIncrement": true,
+      "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "http://127.0.0.1:8000/api"
+        "EXPO_PUBLIC_API_URL": "https://gym-scheduler-3kbu.onrender.com/api"
       }
     }
   },

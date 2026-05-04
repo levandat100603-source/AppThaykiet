@@ -10,6 +10,8 @@ import {
   RefreshControl,
   Platform,
   Alert,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/api/client';
@@ -397,25 +399,32 @@ function DataCard({ title, description, rows, fields }: { title: string; descrip
       {rows.length === 0 ? (
         <Text style={styles.emptyText}>Chưa có dữ liệu.</Text>
       ) : (
-        <View style={styles.previewList}>
-          {rows.slice(0, 5).map((row, index) => (
-            <View key={row.id ?? index} style={styles.previewItem}>
-              <View style={styles.previewItemHeader}>
-                <Text style={styles.previewItemTitle}>#{row.id ?? index + 1}</Text>
-                <Text style={styles.previewItemMeta}>{row.status || row.type || row.name || row.title || row.code || ''}</Text>
-              </View>
-              <View style={styles.previewGrid}>
+        <View style={styles.tableContainer}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.tableInner}>
+              <View style={styles.rowHeader}>
                 {fields.map((field) => (
-                  <View key={field.key} style={styles.previewField}>
-                    <Text style={styles.previewLabel}>{field.label}</Text>
-                    <Text style={styles.previewValue} numberOfLines={2}>
-                      {formatCell(row[field.key], field.type)}
+                  <View key={field.key} style={styles.tableCellWrapper}>
+                    <Text style={[styles.previewLabel, styles.tableHeaderText]} numberOfLines={1}>
+                      {field.label}
                     </Text>
                   </View>
                 ))}
               </View>
+
+              {rows.slice(0, 5).map((row, index) => (
+                <View key={row.id ?? index} style={styles.rowData}>
+                  {fields.map((field) => (
+                    <View key={field.key} style={styles.tableCellWrapper}>
+                      <Text style={styles.previewValue} numberOfLines={2}>
+                        {formatCell(row[field.key], field.type)}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ))}
             </View>
-          ))}
+          </ScrollView>
         </View>
       )}
     </View>
@@ -430,6 +439,8 @@ export default function DashboardScreen() {
   const [adminData, setAdminData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [showTargetModal, setShowTargetModal] = useState(false);
+  const [newTarget, setNewTarget] = useState('');
 
   const fetchData = useCallback(async () => {
     if (isInitializing || !token || user?.role !== 'admin') {
@@ -484,6 +495,41 @@ export default function DashboardScreen() {
       if (confirm(confirmMessage)) executeReset();
     } else {
       Alert.alert('Cập nhật dữ liệu', confirmMessage, [{ text: 'Hủy', style: 'cancel' }, { text: 'Đồng ý', onPress: executeReset }]);
+    }
+  };
+
+  const handleUpdateTarget = async () => {
+    const targetValue = parseFloat(newTarget);
+    if (!newTarget || isNaN(targetValue) || targetValue < 0) {
+      if (Platform.OS === 'web') {
+        alert('Vui lòng nhập số tiền hợp lệ');
+      } else {
+        Alert.alert('Lỗi', 'Vui lòng nhập số tiền hợp lệ');
+      }
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await api.post('/dashboard/update-target', { target: targetValue });
+      await fetchData();
+      setShowTargetModal(false);
+      setNewTarget('');
+
+      if (Platform.OS === 'web') {
+        alert('Đã cập nhật mục tiêu doanh thu thành công');
+      } else {
+        Alert.alert('Thành công', 'Đã cập nhật mục tiêu doanh thu');
+      }
+    } catch (error) {
+      console.log('Lỗi cập nhật mục tiêu:', error);
+      if (Platform.OS === 'web') {
+        alert('Lỗi cập nhật mục tiêu doanh thu');
+      } else {
+        Alert.alert('Lỗi', 'Không thể cập nhật mục tiêu doanh thu');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -570,7 +616,18 @@ export default function DashboardScreen() {
                   <View style={styles.progressBarBg}>
                     <View style={[styles.progressBarFill, { width: `${Math.min(Number(currentStats.progress || 0), 100)}%` }]} />
                   </View>
-                  <Text style={[styles.blueLabel, { marginTop: 6 }]}>Mục tiêu: {formatCurrency(currentStats.target)}</Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+                    <Text style={[styles.blueLabel]}>Mục tiêu: {formatCurrency(currentStats.target)}</Text>
+                    <Pressable 
+                      style={{ paddingHorizontal: 12, paddingVertical: 6 }}
+                      onPress={() => {
+                        setNewTarget(currentStats.target.toString());
+                        setShowTargetModal(true);
+                      }}
+                    >
+                      <MaterialCommunityIcons name="pencil" size={18} color="#fff" />
+                    </Pressable>
+                  </View>
                 </View>
               </Reveal>
 
@@ -650,6 +707,66 @@ export default function DashboardScreen() {
           )}
         </ScrollView>
       )}
+
+      {/* Target Edit Modal */}
+      <Modal
+        visible={showTargetModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowTargetModal(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <View style={{ backgroundColor: '#fff', borderRadius: 14, padding: 20, width: '100%', maxWidth: 400 }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: UI.colors.text, marginBottom: 12 }}>Cập nhật mục tiêu doanh thu</Text>
+            <Text style={{ fontSize: 13, color: UI.colors.textMuted, marginBottom: 16 }}>Nhập số tiền mục tiêu cho tháng (VND)</Text>
+            
+            <View style={{ marginBottom: 20 }}>
+              <TextInput
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  borderRadius: 8,
+                  padding: 12,
+                  fontSize: 15,
+                  color: UI.colors.text,
+                }}
+                placeholder="50000000"
+                placeholderTextColor="#cbd5e1"
+                keyboardType="decimal-pad"
+                value={newTarget}
+                onChangeText={setNewTarget}
+              />
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <Pressable
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  borderRadius: 8,
+                  alignItems: 'center',
+                  backgroundColor: '#f1f5f9',
+                }}
+                onPress={() => setShowTargetModal(false)}
+              >
+                <Text style={{ color: UI.colors.textMuted, fontWeight: '600', fontSize: 14 }}>Hủy</Text>
+              </Pressable>
+              <Pressable
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  borderRadius: 8,
+                  alignItems: 'center',
+                  backgroundColor: UI.colors.primary,
+                }}
+                onPress={handleUpdateTarget}
+              >
+                <Text style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>Cập nhật</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -730,5 +847,12 @@ const styles = StyleSheet.create({
   previewGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   previewField: { width: '48%', minWidth: 180 },
   previewLabel: { fontSize: 11, color: UI.colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, fontFamily: UI.font.body },
-  previewValue: { fontSize: 13, color: UI.colors.text, fontWeight: '700', marginTop: 2, fontFamily: UI.font.body },
+  previewValue: { fontSize: 13, color: UI.colors.text, fontWeight: '700', marginTop: 2, fontFamily: UI.font.body, textAlign: 'left' },
+  /* Table styles for aligned columns */
+  tableContainer: { overflow: 'hidden' },
+  tableInner: { minWidth: 600 },
+  rowHeader: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#e2e8f0', paddingBottom: 8, marginBottom: 8, backgroundColor: '#fafafa' },
+  rowData: { flexDirection: 'row', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f1f5f9', alignItems: 'center' },
+  tableCellWrapper: { flex: 1, minWidth: 140, paddingHorizontal: 8 },
+  tableHeaderText: { fontSize: 12, fontWeight: '700', color: '#64748b', textAlign: 'left' },
 });

@@ -51,6 +51,7 @@ export default function ScheduleListPage() {
   const [schedules, setSchedules] = useState<GymClass[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   
   
   const { addToCart, cart } = useCart();
@@ -83,6 +84,17 @@ export default function ScheduleListPage() {
   const visibleSchedules = isTrainer
     ? schedules.filter((gymClass) => (gymClass.trainer_name || '').trim().toLowerCase() === trainerName)
     : schedules;
+
+  const filteredSchedules = visibleSchedules.filter((c) => {
+    if (!searchQuery || searchQuery.trim() === '') return true;
+    const q = searchQuery.trim().toLowerCase();
+    return (
+      (c.name || '').toLowerCase().includes(q) ||
+      (c.trainer_name || '').toLowerCase().includes(q) ||
+      (c.location || '').toLowerCase().includes(q) ||
+      (c.days || '').toLowerCase().includes(q)
+    );
+  });
 
   
   const parseDays = (daysString: string): string[] => {
@@ -178,6 +190,16 @@ export default function ScheduleListPage() {
       }
     }, [isInitializing, fetchSchedules])
   );
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (!isInitializing) {
+        fetchSchedules();
+      }
+    }, 60000);
+
+    return () => clearInterval(timer);
+  }, [fetchSchedules, isInitializing]);
   
   
   const handleBookForMember = async (member: any) => {
@@ -442,6 +464,8 @@ export default function ScheduleListPage() {
           </InteractivePressable>
         )}
       </View>
+
+      
       </Reveal>
     );
   };
@@ -453,6 +477,16 @@ export default function ScheduleListPage() {
       <View style={[styles.headerContainer, isCompact && styles.headerContainerCompact]}>
         <Text style={[styles.pageTitle, isCompact && styles.pageTitleCompact, { color: colors.text }]}>{isTrainer ? 'Lớp của tôi' : 'Lịch tập lớp'}</Text>
         <Text style={[styles.pageDesc, isCompact && styles.pageDescCompact, { color: colors.textMuted }]}>{isTrainer ? 'Danh sách lớp bạn được phân công giảng dạy' : 'Chọn lớp học phù hợp với lịch trình của bạn'}</Text>
+
+        <View style={{ width: '100%', maxWidth: 600, marginTop: 12 }}>
+          <TextInput
+            style={[styles.searchInput, { borderColor: colors.border, backgroundColor: colors.surfaceMuted, color: colors.text }]}
+            placeholder={isTrainer ? 'Tìm theo tên lớp hoặc huấn luyện viên...' : 'Tìm lớp, huấn luyện viên, địa điểm...'}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholderTextColor={colors.textMuted}
+          />
+        </View>
       </View>
 
 
@@ -470,7 +504,7 @@ export default function ScheduleListPage() {
         </View>
       ) : (
         <FlatList
-          data={visibleSchedules}
+          data={filteredSchedules}
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderScheduleItem}
           contentContainerStyle={[styles.listContent, isCompact && styles.listContentCompact]}

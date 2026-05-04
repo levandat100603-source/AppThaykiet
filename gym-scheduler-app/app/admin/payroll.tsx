@@ -76,6 +76,15 @@ const formatDateTime = (value?: string | null) => {
   }
 };
 
+const getConfirmationImages = (data: any): string[] => {
+  if (Array.isArray(data)) return data;
+  if (typeof data === 'string') return [data];
+  if (data && typeof data === 'object' && typeof data[Symbol.iterator] === 'function') {
+    return Array.from(data as any);
+  }
+  return [];
+};
+
 export default function AdminPayrollScreen() {
   const router = useRouter();
   const { isDark } = useThemeMode();
@@ -84,6 +93,7 @@ export default function AdminPayrollScreen() {
   const [requests, setRequests] = useState<WithdrawalRequestItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedRequest, setSelectedRequest] = useState<WithdrawalRequestItem | null>(null);
   const [approveNotes, setApproveNotes] = useState('');
   const [rejectReason, setRejectReason] = useState('');
@@ -119,9 +129,17 @@ export default function AdminPayrollScreen() {
     fetchData();
   };
 
-  const pendingRequests = useMemo(() => requests.filter((item) => item.status === 'pending'), [requests]);
-  const approvedRequests = useMemo(() => requests.filter((item) => item.status === 'approved' || item.status === 'processed'), [requests]);
-  const rejectedRequests = useMemo(() => requests.filter((item) => item.status === 'rejected'), [requests]);
+  const filterBySearch = (item: WithdrawalRequestItem, query: string) => {
+    if (!query.trim()) return true;
+    const searchLower = query.toLowerCase();
+    const name = String(item.trainer_name || '').toLowerCase();
+    const email = String(item.trainer_email || '').toLowerCase();
+    return name.includes(searchLower) || email.includes(searchLower);
+  };
+
+  const pendingRequests = useMemo(() => requests.filter((item) => item.status === 'pending' && filterBySearch(item, searchQuery)), [requests, searchQuery]);
+  const approvedRequests = useMemo(() => requests.filter((item) => (item.status === 'approved' || item.status === 'processed') && filterBySearch(item, searchQuery)), [requests, searchQuery]);
+  const rejectedRequests = useMemo(() => requests.filter((item) => item.status === 'rejected' && filterBySearch(item, searchQuery)), [requests, searchQuery]);
 
   const statusPalette = (status: WithdrawalRequestItem['status']) => {
     if (status === 'approved' || status === 'processed') {
@@ -208,9 +226,15 @@ export default function AdminPayrollScreen() {
         await appendAssetToFormData(uploadFormData, asset, 'confirmation_images[]');
       }
 
-      await api.post(`/admin/withdrawal-requests/${selectedRequest.id}/approve`, uploadFormData, {
+      const res = await api.post(`/admin/withdrawal-requests/${selectedRequest.id}/approve`, uploadFormData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
+
+      // debug: log backend response to inspect confirmation_images
+      try {
+        // eslint-disable-next-line no-console
+        console.log('[payroll] approve response', res?.data);
+      } catch {}
 
       showMessage('Thành công', 'Đã duyệt yêu cầu rút tiền.');
       setActiveModal(null);
@@ -294,23 +318,31 @@ export default function AdminPayrollScreen() {
           </View>
         )}
 
-        {!!item.notes && (
+        {item.notes && (
           <View style={styles.noteBox}>
             <Text style={[styles.noteLabel, { color: colors.textMuted }]}>Ghi chú:</Text>
             <Text style={[styles.noteText, { color: colors.text }]}>{item.notes}</Text>
           </View>
         )}
 
-        {Array.isArray(item.confirmation_images) && item.confirmation_images.length > 0 && (
-          <View style={styles.imageSection}>
-            <Text style={[styles.imageSectionTitle, { color: colors.textMuted }]}>Ảnh xác nhận</Text>
-            <View style={styles.imageGrid}>
-              {item.confirmation_images.slice(0, 3).map((uri, index) => (
-                <Image key={`${item.id}-${index}`} source={{ uri: normalizeImageUrl(uri) }} style={styles.confirmImage} />
-              ))}
+        {(() => {
+          const images = getConfirmationImages(item.confirmation_images);
+          return images.length > 0 ? (
+            <View style={styles.imageSection}>
+              <Text style={[styles.imageSectionTitle, { color: colors.textMuted }]}>Ảnh xác nhận</Text>
+              <View style={styles.imageGrid}>
+                {images.slice(0, 3).map((uri, index) => (
+                  <Image 
+                    key={`${item.id}-${index}`} 
+                    source={{ uri: normalizeImageUrl(uri) }} 
+                    style={styles.confirmImage}
+                    resizeMode="cover"
+                  />
+                ))}
+              </View>
             </View>
-          </View>
-        )}
+          ) : null;
+        })()}
 
         {showActions && (
           <View style={styles.actionRow}>
@@ -357,6 +389,17 @@ export default function AdminPayrollScreen() {
             <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Đã từ chối</Text>
             <Text style={[styles.summaryValue, { color: colors.text }]}>{rejectedRequests.length}</Text>
           </View>
+        </View>
+
+        <View style={{ marginBottom: 16 }}>
+          <TextInput
+            style={[styles.searchInput, { borderColor: colors.border, backgroundColor: colors.surface, color: colors.text }]}
+            placeholder="Tìm theo tên hoặc email HLV..."
+            placeholderTextColor={colors.textMuted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCapitalize="none"
+          />
         </View>
 
         <View style={[styles.sectionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -435,7 +478,12 @@ export default function AdminPayrollScreen() {
                 {selectedImages.length > 0 && (
                   <View style={styles.previewImageGrid}>
                     {selectedImages.slice(0, 3).map((asset) => (
-                      <Image key={asset.assetId || asset.uri} source={{ uri: asset.uri }} style={styles.previewImage} />
+                      <Image 
+                        key={asset.assetId || asset.uri} 
+                        source={{ uri: asset.uri }} 
+                        style={styles.previewImage}
+                        resizeMode="cover"
+                      />
                     ))}
                   </View>
                 )}
@@ -504,6 +552,8 @@ const styles = StyleSheet.create({
   summaryLabel: { fontSize: 12, fontFamily: UI.font.body },
   summaryValue: { fontSize: 24, fontWeight: '800', fontFamily: UI.font.heading, marginTop: 6 },
 
+  searchInput: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, fontFamily: UI.font.body },
+
   sectionCard: { borderWidth: 1, borderRadius: 16, padding: 14, marginBottom: 14 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   sectionTitle: { fontSize: 18, fontWeight: '800', fontFamily: UI.font.heading },
@@ -550,7 +600,7 @@ const styles = StyleSheet.create({
   pickBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10 },
   pickBtnText: { color: '#fff', fontWeight: '800', fontSize: 13, fontFamily: UI.font.body },
   previewImageGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  previewImage: { width: 88, height: 88, borderRadius: 10, backgroundColor: '#e2e8f0' },
+  previewImage: { width: 100, height: 100, borderRadius: 10, backgroundColor: '#e2e8f0' },
   modalActions: { flexDirection: 'row', gap: 10, marginTop: 8 },
   secondaryBtn: { flex: 1, borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
   secondaryBtnText: { fontSize: 13, fontWeight: '800', fontFamily: UI.font.body },

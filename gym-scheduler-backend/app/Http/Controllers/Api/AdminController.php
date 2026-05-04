@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
+use App\Support\GymClassSchedule;
 
 class AdminController extends Controller
 {
@@ -31,7 +32,8 @@ class AdminController extends Controller
     
     public function getData()
     {
-        
+        GymClassSchedule::cleanupExpiredClasses();
+
         $classes = [];
         try {
             $classes = DB::table('gym_classes')->orderBy('id', 'desc')->get();
@@ -344,6 +346,35 @@ class AdminController extends Controller
             return response()->json(['success' => true, 'message' => $msg]);
         }
 
+        if ($type === 'classes') {
+            $days = array_filter(array_map('trim', explode(',', (string) $request->days)));
+            if (empty($days)) {
+                return response()->json(['message' => 'Vui lòng chọn ngày tập hợp lệ'], 400);
+            }
+
+            // Support both frontends: either send separate timeHour/timeMinute/timeMode
+            // or a single `time` string (e.g. "06:00 AM").
+            $timeForCheck = null;
+            if ($request->filled('time')) {
+                $timeForCheck = (string) $request->time;
+            } else {
+                $timeForCheck = trim((string) $request->timeHour . ':' . (string) $request->timeMinute . ' ' . (string) $request->timeMode);
+            }
+
+            foreach ($days as $day) {
+                // Ensure the provided day is strictly in the future (not today)
+                $parsed = GymClassSchedule::parseDateString($day);
+                if (!$parsed) {
+                    return response()->json(['message' => "Ngày {$day} không hợp lệ"], 400);
+                }
+
+                $todayStart = Carbon::now()->startOfDay();
+                if ($parsed->startOfDay()->lte($todayStart)) {
+                    return response()->json(['message' => 'Lớp tập chỉ được tạo cho ngày trong tương lai (không bao gồm hôm nay)'], 400);
+                }
+            }
+        }
+
         
         
         
@@ -627,6 +658,11 @@ class AdminController extends Controller
             $gymClass = DB::table('gym_classes')->where('id', $classId)->first();
             if (!$gymClass) {
                 return response()->json(['message' => 'Lớp tập không tồn tại'], 404);
+            }
+
+            $activeDays = GymClassSchedule::activeDays($gymClass->days ?? '', $gymClass->time ?? '', $gymClass->duration ?? 0, now());
+            if (empty($activeDays)) {
+                return response()->json(['message' => 'Lớp tập này đã hết thời gian đăng ký'], 422);
             }
 
             

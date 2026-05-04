@@ -1,0 +1,14 @@
+# Ignore backend folder and other unnecessary files
+../gym-scheduler-backend
+node_modules
+.git
+.env
+.env.local
+.expo
+dist
+build
+.DS_Store
+*.log
+.next
+out
+coverage
